@@ -1,0 +1,15 @@
+[Unit]
+Description=DES Encrypted Chat Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chat
+ExecStart=/usr/bin/python3 /opt/chat/app.py
+Restart=always
+RestartSec=5
+Environment=FLASK_ENV=production
+
+[Install]
+WantedBy=multi-user.target

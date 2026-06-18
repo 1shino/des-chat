@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DES加密聊天</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; background: #0e1621; color: #f5f5f5; overflow: hidden; }
+
+/* 弹窗通用 */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: #17212b; border-radius: 12px; padding: 36px; width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.modal h2 { text-align: center; margin-bottom: 24px; color: #6ab3f3; font-size: 22px; }
+.modal input { width: 100%; padding: 12px 16px; margin-bottom: 14px; border: 1px solid #2b3a4a; border-radius: 8px; background: #0e1621; color: #f5f5f5; font-size: 15px; outline: none; }
+.modal input:focus { border-color: #6ab3f3; }
+.modal button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; margin-bottom: 10px; font-weight: 600; }
+.btn-primary { background: #2b5278; color: #fff; }
+.btn-primary:hover { background: #3a6b9f; }
+.btn-secondary { background: transparent; color: #6ab3f3; border: 1px solid #2b5278 !important; }
+.btn-secondary:hover { background: #17212b; }
+.btn-danger { background: #5a2020; color: #ff6b6b; }
+.btn-danger:hover { background: #7a3030; }
+.modal .error { color: #e53935; font-size: 13px; text-align: center; margin-bottom: 10px; min-height: 18px; }
+.modal .toggle { text-align: center; margin-top: 8px; }
+.modal .toggle a { color: #6ab3f3; cursor: pointer; text-decoration: none; font-size: 14px; }
+.modal-mini { background: #17212b; border-radius: 12px; padding: 24px; width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.modal-mini h3 { margin-bottom: 16px; color: #6ab3f3; }
+.modal-mini input { width: 100%; padding: 10px 14px; margin-bottom: 12px; border: 1px solid #2b3a4a; border-radius: 8px; background: #0e1621; color: #f5f5f5; font-size: 14px; outline: none; }
+.modal-mini .btn-row { display: flex; gap: 10px; }
+.modal-mini .btn-row button { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+
+/* 主布局 */
+.app { display: flex; height: 100vh; }
+.sidebar { width: 320px; min-width: 320px; background: #17212b; border-right: 1px solid #0e1621; display: flex; flex-direction: column; }
+.sidebar-header { padding: 14px 16px; border-bottom: 1px solid #0e1621; display: flex; align-items: center; gap: 12px; }
+.sidebar-header .avatar { width: 40px; height: 40px; border-radius: 50%; background: #2b5278; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: #6ab3f3; }
+.sidebar-header .user-info { flex: 1; }
+.sidebar-header .user-info .name { font-weight: 600; font-size: 15px; }
+.sidebar-header .user-info .status { font-size: 12px; color: #6ab3f3; }
+.sidebar-header .actions { display: flex; gap: 6px; }
+.sidebar-header .actions button { background: none; border: none; color: #6ab3f3; cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 6px; }
+.sidebar-header .actions button:hover { background: #2b3a4a; }
+
+/* 标签页切换 */
+.tab-bar { display: flex; border-bottom: 1px solid #0e1621; }
+.tab-bar .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; color: #8b9bab; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab-bar .tab:hover { color: #f5f5f5; }
+.tab-bar .tab.active { color: #6ab3f3; border-bottom-color: #6ab3f3; }
+.tab-bar .tab .badge { background: #e53935; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+
+.chat-list { flex: 1; overflow-y: auto; }
+.chat-item { padding: 12px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.15s; }
+.chat-item:hover { background: #202b36; }
+.chat-item.active { background: #2b5278; }
+.chat-item .icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.chat-item .icon.lobby { background: #2b5278; }
+.chat-item .icon.group { background: #3a6b3a; }
+.chat-item .icon.private { background: #6b3a6b; }
+.chat-item .icon.friend { background: #2b5278; }
+.chat-item .info { flex: 1; min-width: 0; }
+.chat-item .info .title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-item .info .preview { font-size: 13px; color: #8b9bab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-item .meta { font-size: 11px; color: #8b9bab; flex-shrink: 0; }
+.badge-tag { font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
+.badge-private { background: #5a2020; color: #ff6b6b; }
+.badge-public { background: #1a3a1a; color: #66bb6a; }
+.badge-offline { background: #3a3a3a; color: #999; }
+.badge-online { background: #1a3a1a; color: #66bb6a; }
+
+/* 好友请求项 */
+.request-item { padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #0e1621; }
+.request-item .name { flex: 1; font-size: 14px; font-weight: 600; }
+.request-item .btns { display: flex; gap: 6px; }
+.request-item .btns button { padding: 5px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.btn-accept { background: #2b5278; color: #fff; }
+.btn-accept:hover { background: #3a6b9f; }
+.btn-reject { background: #3a2020; color: #ff6b6b; }
+.btn-reject:hover { background: #5a3030; }
+
+/* 邀请通知 */
+.invite-item { padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #0e1621; }
+.invite-item .info { flex: 1; }
+.invite-item .info .title { font-size: 14px; font-weight: 600; }
+.invite-item .info .desc { font-size: 12px; color: #8b9bab; }
+.invite-item .btns { display: flex; gap: 6px; }
+.invite-item .btns button { padding: 5px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+
+/* 在线用户面板 */
+.online-panel { padding: 8px 16px; border-top: 1px solid #0e1621; }
+.online-panel .title { font-size: 12px; color: #8b9bab; margin-bottom: 6px; }
+.online-panel .users { display: flex; flex-wrap: wrap; gap: 6px; }
+.online-panel .user-tag { background: #2b3a4a; padding: 3px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; }
+.online-panel .user-tag:hover { background: #3a5a7a; }
+
+/* 右侧聊天区 */
+.chat-area { flex: 1; display: flex; flex-direction: column; background: #0e1621; }
+.chat-header { padding: 12px 20px; background: #17212b; border-bottom: 1px solid #0e1621; display: flex; align-items: center; gap: 12px; }
+.chat-header .title { font-weight: 600; font-size: 16px; }
+.chat-header .subtitle { font-size: 13px; color: #8b9bab; }
+.chat-header .header-actions { margin-left: auto; display: flex; gap: 8px; }
+.chat-header .header-actions button { background: #2b5278; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.chat-header .header-actions button:hover { background: #3a6b9f; }
+
+.messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; }
+.msg { max-width: 65%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+.msg .sender { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.msg .time { font-size: 11px; color: #8b9bab; margin-top: 4px; text-align: right; }
+.msg .encrypted { font-size: 11px; color: #5a6a7a; margin-top: 2px; font-family: monospace; word-break: break-all; }
+
+.msg.system { align-self: center; background: transparent; color: #8b9bab; font-size: 13px; padding: 4px 12px; }
+.msg.mine { align-self: flex-end; background: #2b5278; border-bottom-right-radius: 4px; }
+.msg.mine .sender { color: #6ab3f3; }
+.msg.other { align-self: flex-start; background: #182533; border-bottom-left-radius: 4px; }
+.msg.other .sender { color: #6ab3f3; }
+.msg.private-msg { align-self: flex-start; background: #1a1a2e; border: 1px solid #3a2a5a; border-bottom-left-radius: 4px; }
+.msg.private-msg .sender { color: #b39ddb; }
+.msg.private-echo { align-self: flex-end; background: #1a1a2e; border: 1px solid #3a2a5a; border-bottom-right-radius: 4px; }
+.msg.private-echo .sender { color: #b39ddb; }
+.msg.group-msg { align-self: flex-start; background: #1a2e1a; border: 1px solid #2a5a2a; border-bottom-left-radius: 4px; }
+.msg.group-msg .sender { color: #81c784; }
+
+.input-area { padding: 12px 20px; background: #17212b; border-top: 1px solid #0e1621; display: flex; gap: 10px; }
+.input-area input { flex: 1; padding: 12px 16px; border: 1px solid #2b3a4a; border-radius: 10px; background: #0e1621; color: #f5f5f5; font-size: 14px; outline: none; }
+.input-area input:focus { border-color: #6ab3f3; }
+.input-area button { padding: 12px 24px; background: #2b5278; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.input-area button:hover { background: #3a6b9f; }
+
+.empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #5a6a7a; font-size: 16px; }
+.empty-list { color: #5a6a7a; font-size: 14px; text-align: center; padding: 30px 20px; }
+
+/* 创建群组选项 */
+.radio-group { display: flex; gap: 16px; margin-bottom: 14px; }
+.radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; color: #c8d6e5; }
+.radio-group input[type="radio"] { accent-color: #6ab3f3; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2b3a4a; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- 弹窗通知容器 -->
+<div id="toastContainer" style="position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;align-items:flex-end"></div>
+<style>@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}</style>
+
+<!-- 登录/注册弹窗 -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal">
+    <h2 id="authTitle">🔐 登录</h2>
+    <div class="error" id="authError"></div>
+    <input type="text" id="authUser" placeholder="用户名" autocomplete="off">
+    <input type="password" id="authPass" placeholder="密码" autocomplete="off">
+    <button class="btn-primary" id="authBtn" onclick="doAuth()">登 录</button>
+    <div class="toggle">
+      <a id="authToggle" onclick="toggleAuth()">没有账号？注册</a>
+    </div>
+  </div>
+</div>
+
+<!-- 新建群组弹窗 -->
+<div class="modal-overlay" id="createGroupModal" style="display:none">
+  <div class="modal-mini">
+    <h3>📌 新建群组</h3>
+    <input type="text" id="groupName" placeholder="输入群名称" autocomplete="off">
+    <div class="radio-group">
+      <label><input type="radio" name="groupType" value="public" checked> 🌐 公开群</label>
+      <label><input type="radio" name="groupType" value="private"> 🔒 私有群</label>
+    </div>
+    <div style="font-size:12px;color:#8b9bab;margin-bottom:14px">公开群：任何人可搜索加入 | 私有群：仅限邀请</div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="doCreateGroup()">创建</button>
+      <button class="btn-secondary" onclick="closeModal('createGroupModal')" style="color:#f5f5f5">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 加入群组弹窗 -->
+<div class="modal-overlay" id="joinGroupModal" style="display:none">
+  <div class="modal-mini">
+    <h3>🔗 加入公开群组</h3>
+    <div id="joinGroupList" style="max-height:300px;overflow-y:auto;margin-bottom:12px"></div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeModal('joinGroupModal')" style="color:#f5f5f5;flex:1">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 添加好友弹窗 -->
+<div class="modal-overlay" id="addFriendModal" style="display:none">
+  <div class="modal-mini">
+    <h3>👤 添加好友</h3>
+    <input type="text" id="friendName" placeholder="输入用户名" autocomplete="off"
+           onkeydown="if(event.key==='Enter')doAddFriend()">
+    <div class="btn-row">
+      <button class="btn-primary" onclick="doAddFriend()">发送请求</button>
+      <button class="btn-secondary" onclick="closeModal('addFriendModal')" style="color:#f5f5f5">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 邀请入群弹窗 -->
+<div class="modal-overlay" id="inviteGroupModal" style="display:none">
+  <div class="modal-mini">
+    <h3>📨 邀请好友入群</h3>
+    <div id="inviteFriendsList" style="max-height:300px;overflow-y:auto;margin-bottom:12px"></div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeModal('inviteGroupModal')" style="color:#f5f5f5;flex:1">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div class="app" id="mainApp" style="display:none">
+  <!-- 左侧栏 -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="avatar" id="myAvatar"></div>
+      <div class="user-info">
+        <div class="name" id="myName"></div>
+        <div class="status" id="myKeyInfo" style="font-size:10px;color:#5a6a7a;font-family:monospace"></div>
+      </div>
+      <div class="actions">
+        <button onclick="showModal('addFriendModal')" title="添加好友">👤</button>
+        <button onclick="showModal('createGroupModal')" title="新建群组">➕</button>
+        <button onclick="showModal('joinGroupModal');requestGroupList()" title="加入群组">🔗</button>
+        <button onclick="refreshAll()" title="刷新">🔄</button>
+      </div>
+    </div>
+
+    <!-- 标签页 -->
+    <div class="tab-bar">
+      <div class="tab active" id="tabChats" onclick="switchTab('chats')">💬 聊天</div>
+      <div class="tab" id="tabFriends" onclick="switchTab('friends')">👥 好友<span class="badge" id="friendBadge" style="display:none"></span></div>
+    </div>
+
+    <!-- 聊天列表 -->
+    <div class="chat-list" id="chatList"></div>
+
+    <!-- 好友列表 -->
+    <div class="chat-list" id="friendList" style="display:none"></div>
+
+    <div class="online-panel">
+      <div class="title">🟢 在线用户</div>
+      <div class="users" id="onlineUsers"></div>
+    </div>
+  </div>
+
+  <!-- 右侧聊天区 -->
+  <div class="chat-area">
+    <div class="chat-header">
+      <div class="title" id="chatTitle">选择一个聊天</div>
+      <div class="subtitle" id="chatSubtitle"></div>
+      <div class="header-actions" id="headerActions"></div>
+    </div>
+    <div class="messages" id="messages">
+      <div class="empty-state">选择左侧聊天开始对话</div>
+    </div>
+    <div class="input-area">
+      <input type="text" id="msgInput" placeholder="输入消息..." autocomplete="off"
+             onkeydown="if(event.key==='Enter')sendMessage()">
+      <button onclick="sendMessage()">发 送</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let currentUser = "";
+let myKeyHex = "";  // 当前用户的DES密钥（hex）
+let isRegister = false;
+let currentTab = "chats";
+// currentChat: {type, name, uid?}  uid仅群组使用
+let currentChat = { type: "lobby", name: "大厅" };
+let chatHistory = {};
+let friendData = { friends: [], requests: { from: [], to: [] } };
+let groupList = {};  // {uid: {name, members, creator, public, invites}}
+let pendingGroupInvites = []; // [{uid, name, from}]
+let onlineUsersList = [];
+let userKeysCache = {};  // {username: keyHex} 缓存已知用户密钥
+let pendingDecrypts = []; // 等待密钥到达后解密的消息
+
+// ========== DES加密工具（浏览器端） ==========
+function hexToBytes(hex) {
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+  return bytes;
+}
+
+function deriveSharedKey(keyA, keyB) {
+  // 固定顺序：字典序小的在前，保证双方算出相同密钥
+  const [first, second] = keyA < keyB ? [keyA, keyB] : [keyB, keyA];
+  const combined = CryptoJS.enc.Hex.parse(first + second);
+  const hash = CryptoJS.SHA256(combined);
+  return hash.toString(CryptoJS.enc.Hex).substring(0, 16); // 8 bytes = 16 hex chars
+}
+
+function getUserKey(username) {
+  if (username === currentUser) return myKeyHex;
+  if (userKeysCache[username]) return userKeysCache[username];
+  // 按需请求，返回null（消息会进入pendingDecrypts等待）
+  socket.emit("get_user_key", { username });
+  return null;
+}
+
+function getCreatorKey(groupUid) {
+  const info = groupList[groupUid];
+  if (!info) return null;
+  return getUserKey(info.creator);
+}
+
+function desEncrypt(text, keyHex) {
+  // 密钥作为WordArray传入，CryptoJS会直接使用原始字节
+  const key = CryptoJS.enc.Hex.parse(keyHex);
+  const encrypted = CryptoJS.DES.encrypt(text, key, {
+    mode: CryptoJS.mode.ECB,
+    padding: CryptoJS.pad.Pkcs7,
+    // 关键：iv设为空WordArray，避免CryptoJS推导密钥
+    iv: CryptoJS.lib.WordArray.create(0)
+  });
+  return encrypted.ciphertext.toString(CryptoJS.enc.Hex);
+}
+
+function desDecrypt(cipherHex, keyHex) {
+  const key = CryptoJS.enc.Hex.parse(keyHex);
+  const ciphertext = CryptoJS.enc.Hex.parse(cipherHex);
+  const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext });
+  const decrypted = CryptoJS.DES.decrypt(cipherParams, key, {
+    mode: CryptoJS.mode.ECB,
+    padding: CryptoJS.pad.Pkcs7,
+    iv: CryptoJS.lib.WordArray.create(0)
+  });
+  return decrypted.toString(CryptoJS.enc.Utf8);
+}
+
+function deriveGroupKey(creatorKeyHex, groupUid) {
+  // SHA256(creatorKey + groupUid) 前8字节
+  const combined = CryptoJS.enc.Hex.parse(creatorKeyHex + CryptoJS.enc.Utf8.parse(groupUid).toString(CryptoJS.enc.Hex));
+  const hash = CryptoJS.SHA256(combined);
+  return hash.toString(CryptoJS.enc.Hex).substring(0, 16);
+}
+
+// ========== 认证 ==========
+function toggleAuth() {
+  isRegister = !isRegister;
+  document.getElementById("authTitle").textContent = isRegister ? "📝 注册" : "🔐 登录";
+  document.getElementById("authBtn").textContent = isRegister ? "注 册" : "登 录";
+  document.getElementById("authToggle").textContent = isRegister ? "已有账号？登录" : "没有账号？注册";
+  document.getElementById("authError").textContent = "";
+}
+
+function doAuth() {
+  const u = document.getElementById("authUser").value.trim();
+  const p = document.getElementById("authPass").value;
+  if (!u || !p) { setError("authError", "请填写用户名和密码"); return; }
+  if (isRegister) {
+    socket.emit("register", { username: u, password: p });
+  } else {
+    socket.emit("login", { username: u, password: p });
+  }
+}
+
+function setError(id, text) {
+  document.getElementById(id).textContent = text;
+  setTimeout(() => { document.getElementById(id).textContent = ""; }, 3000);
+}
+
+function escHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function minUser(a, b) { return a < b ? a : b; }
+function maxUser(a, b) { return a > b ? a : b; }
+
+// ========== 标签页切换 ==========
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById("tabChats").classList.toggle("active", tab === "chats");
+  document.getElementById("tabFriends").classList.toggle("active", tab === "friends");
+  document.getElementById("chatList").style.display = tab === "chats" ? "block" : "none";
+  document.getElementById("friendList").style.display = tab === "friends" ? "block" : "none";
+  if (tab === "friends") renderFriendList();
+}
+
+// ========== 聊天列表 ==========
+function renderChatList() {
+  const list = document.getElementById("chatList");
+  let html = "";
+
+  // 大厅
+  html += buildChatItem("lobby", "", "大厅", "💬", "lobby", "所有人可见");
+
+  // 群组（只显示已加入的）
+  for (const [uid, info] of Object.entries(groupList)) {
+    if (info.members && info.members.includes(currentUser)) {
+      const vis = info.public ? "🌐" : "🔒";
+      html += buildChatItem("group", uid, info.name, "👥", "group", `${vis} ${info.members.length} 人`);
+    }
+  }
+
+  // 私聊
+  for (const key of Object.keys(chatHistory)) {
+    if (key.startsWith("priv_")) {
+      const parts = key.replace("priv_", "").split("_");
+      const other = parts.find(n => n !== currentUser) || parts[0];
+      html += buildChatItem("private", "", other, "💬", "private", "私聊");
+    }
+  }
+
+  list.innerHTML = html;
+  // 高亮当前
+  document.querySelectorAll("#chatList .chat-item").forEach(el => {
+    const t = el.dataset.type;
+    const n = el.dataset.name;
+    const u = el.dataset.uid;
+    if (t === currentChat.type) {
+      if (t === "group" && u === currentChat.uid) el.classList.add("active");
+      else if (t !== "group" && n === currentChat.name) el.classList.add("active");
+    }
+  });
+}
+
+function buildChatItem(type, uid, name, icon, iconClass, preview) {
+  // 群组用uid做唯一标识
+  const clickArg = type === "group" ? `'group','${uid}'` : `'${type}','${escHtml(name)}'`;
+  return `<div class="chat-item" data-type="${type}" data-name="${escHtml(name)}" data-uid="${uid}"
+    onclick="switchChat(${clickArg})">
+    <div class="icon ${iconClass}">${icon}</div>
+    <div class="info"><div class="title">${escHtml(name)}</div><div class="preview">${escHtml(preview)}</div></div>
+  </div>`;
+}
+
+// ========== 好友列表 ==========
+function renderFriendList() {
+  const list = document.getElementById("friendList");
+  let html = "";
+
+  // 群组邀请通知
+  if (pendingGroupInvites.length > 0) {
+    html += `<div style="padding:8px 16px;font-size:12px;color:#8b9bab;border-bottom:1px solid #0e1621">群组邀请</div>`;
+    for (const inv of pendingGroupInvites) {
+      html += `<div class="invite-item">
+        <div class="info">
+          <div class="title">👥 ${escHtml(inv.name)}</div>
+          <div class="desc">${escHtml(inv.from)} 邀请你加入</div>
+        </div>
+        <div class="btns">
+          <button class="btn-accept" onclick="acceptGroupInvite('${inv.uid}')">接受</button>
+          <button class="btn-reject" onclick="rejectGroupInvite('${inv.uid}')">拒绝</button>
+        </div>
+      </div>`;
+    }
+  }
+
+  // 好友请求
+  const fromReqs = friendData.requests?.from || [];
+  if (fromReqs.length > 0) {
+    html += `<div style="padding:8px 16px;font-size:12px;color:#8b9bab;border-bottom:1px solid #0e1621">好友请求</div>`;
+    for (const r of fromReqs) {
+      html += `<div class="request-item">
+        <div class="icon friend" style="width:36px;height:36px;font-size:14px">${escHtml(r[0].toUpperCase())}</div>
+        <div class="name">${escHtml(r)}</div>
+        <div class="btns">
+          <button class="btn-accept" onclick="acceptFriend('${escHtml(r)}')">接受</button>
+          <button class="btn-reject" onclick="rejectFriend('${escHtml(r)}')">拒绝</button>
+        </div>
+      </div>`;
+    }
+  }
+
+  // 已发送的请求
+  const toReqs = friendData.requests?.to || [];
+  if (toReqs.length > 0) {
+    html += `<div style="padding:8px 16px;font-size:12px;color:#8b9bab;border-bottom:1px solid #0e1621">等待验证</div>`;
+    for (const r of toReqs) {
+      html += `<div class="request-item">
+        <div class="icon friend" style="width:36px;height:36px;font-size:14px">${escHtml(r[0].toUpperCase())}</div>
+        <div class="name">${escHtml(r)} <span style="font-size:12px;color:#8b9bab">等待接受</span></div>
+      </div>`;
+    }
+  }
+
+  // 好友列表
+  const friends = friendData.friends || [];
+  html += `<div style="padding:8px 16px;font-size:12px;color:#8b9bab;border-bottom:1px solid #0e1621">我的好友 (${friends.length})</div>`;
+  if (friends.length === 0) {
+    html += `<div class="empty-list">还没有好友，点击 👤 添加</div>`;
+  }
+  for (const f of friends) {
+    const isOnline = onlineUsersList.includes(f);
+    const badge = isOnline ? '<span class="badge-tag badge-online">在线</span>' : '<span class="badge-tag badge-offline">离线</span>';
+    html += `<div class="chat-item" onclick="startPrivate('${escHtml(f)}')">
+      <div class="icon friend">${escHtml(f[0].toUpperCase())}</div>
+      <div class="info"><div class="title">${escHtml(f)} ${badge}</div><div class="preview">点击开始私聊</div></div>
+    </div>`;
+  }
+
+  list.innerHTML = html;
+  // 更新badge
+  const badge = document.getElementById("friendBadge");
+  const pending = fromReqs.length + pendingGroupInvites.length;
+  badge.textContent = pending;
+  badge.style.display = pending > 0 ? "inline" : "none";
+}
+
+// ========== 切换聊天 ==========
+function switchChat(type, uidOrName) {
+  if (type === "group") {
+    const uid = uidOrName;
+    const info = groupList[uid];
+    if (!info) return;
+    if (!info.members.includes(currentUser)) {
+      if (!info.public) {
+        alert(`群 [${info.name}] 是私有群，需要邀请才能加入`);
+        return;
+      }
+      if (confirm(`你还没加入群 [${info.name}]，是否加入？`)) {
+        socket.emit("group_join", { uid });
+      }
+      return;
+    }
+    currentChat = { type: "group", uid: uid, name: info.name };
+  } else {
+    currentChat = { type: type, name: uidOrName };
+  }
+
+  renderChatList();
+  const name = currentChat.name;
+  const headerTitle = type === "lobby" ? "💬 大厅" : type === "group" ? `👥 ${name}` : `💬 ${name}`;
+  const headerSub = type === "lobby" ? "所有在线用户可见" : type === "group" ? (groupList[currentChat.uid]?.public ? "🌐 公开群组" : "🔒 私有群组") : "私密对话";
+  document.getElementById("chatTitle").textContent = headerTitle;
+  document.getElementById("chatSubtitle").textContent = headerSub;
+
+  // 群组显示邀请按钮
+  const actions = document.getElementById("headerActions");
+  if (type === "group") {
+    actions.innerHTML = `<button onclick="showInviteModal('${currentChat.uid}')">📨 邀请好友</button>`;
+  } else {
+    actions.innerHTML = "";
+  }
+
+  renderMessages();
+  const histKey = type === "lobby" ? "_lobby" : type === "group" ? `group_${currentChat.uid}` : `priv_${minUser(currentUser, name)}_${maxUser(currentUser, name)}`;
+  socket.emit("history", { target: histKey });
+}
+
+// ========== 消息渲染 ==========
+function addMsg(key, msg) {
+  if (!chatHistory[key]) chatHistory[key] = [];
+  chatHistory[key].push(msg);
+}
+
+function renderMessages() {
+  const container = document.getElementById("messages");
+  const key = currentChatKey();
+  const msgs = chatHistory[key] || [];
+  if (msgs.length === 0) {
+    container.innerHTML = '<div class="empty-state">暂无消息</div>';
+    return;
+  }
+  container.innerHTML = msgs.map(m => msgHTML(m)).join("");
+  container.scrollTop = container.scrollHeight;
+}
+
+function currentChatKey() {
+  if (currentChat.type === "lobby") return "_lobby";
+  if (currentChat.type === "group") return `group_${currentChat.uid}`;
+  return `priv_${minUser(currentUser, currentChat.name)}_${maxUser(currentUser, currentChat.name)}`;
+}
+
+function msgHTML(m) {
+  if (m.type === "system") {
+    return `<div class="msg system">${escHtml(m.text)}</div>`;
+  }
+  const isMine = m.from === currentUser;
+  let cls = "msg ";
+  if (m.msgType === "private") cls += isMine ? "private-echo" : "private-msg";
+  else if (m.msgType === "group") cls += isMine ? "mine" : "group-msg";
+  else cls += isMine ? "mine" : "other";
+  const enc = m.encrypted ? `<div class="encrypted">🔒 ${m.encrypted.substring(0, 32)}...</div>` : "";
+  return `<div class="${cls}">
+    <div class="sender">${escHtml(m.from)}</div>
+    <div>${escHtml(m.text)}</div>
+    ${enc}
+    <div class="time">${escHtml(m.time || "")}</div>
+  </div>`;
+}
+
+// ========== 发送消息 ==========
+function sendMessage() {
+  const input = document.getElementById("msgInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  if (currentChat.type === "lobby") {
+    socket.emit("chat", { text });
+  } else if (currentChat.type === "group") {
+    const info = groupList[currentChat.uid];
+    if (info) {
+      const groupKey = deriveGroupKey(getCreatorKey(currentChat.uid), currentChat.uid);
+      const encrypted = desEncrypt(text, groupKey);
+      socket.emit("group_msg", { uid: currentChat.uid, encrypted });
+    }
+  } else if (currentChat.type === "private") {
+    const sharedKey = deriveSharedKey(myKeyHex, getUserKey(currentChat.name));
+    const encrypted = desEncrypt(text, sharedKey);
+    socket.emit("private", { to: currentChat.name, encrypted });
+  }
+}
+
+// ========== 好友操作 ==========
+function doAddFriend() {
+  const name = document.getElementById("friendName").value.trim();
+  if (!name) return;
+  socket.emit("friend_request", { to: name });
+  closeModal("addFriendModal");
+  document.getElementById("friendName").value = "";
+}
+
+function acceptFriend(name) { socket.emit("friend_accept", { from: name }); }
+function rejectFriend(name) { socket.emit("friend_reject", { from: name }); }
+
+// ========== 群组操作 ==========
+function doCreateGroup() {
+  const name = document.getElementById("groupName").value.trim();
+  if (!name) return;
+  const isPublic = document.querySelector('input[name="groupType"]:checked').value === "public";
+  socket.emit("group_create", { name, public: isPublic });
+  closeModal("createGroupModal");
+  document.getElementById("groupName").value = "";
+}
+
+function requestGroupList() { socket.emit("group_list"); }
+
+// 渲染可加入的公开群列表
+function renderJoinGroupList() {
+  const container = document.getElementById("joinGroupList");
+  const available = [];
+  for (const [uid, info] of Object.entries(groupList)) {
+    if (info.public && !info.members.includes(currentUser)) {
+      available.push({ uid, name: info.name, count: info.members.length });
+    }
+  }
+  if (available.length === 0) {
+    container.innerHTML = '<div style="color:#8b9bab;font-size:14px;text-align:center;padding:20px">没有可加入的公开群组</div>';
+    return;
+  }
+  container.innerHTML = available.map(g =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin-bottom:6px;background:#0e1621;border-radius:8px">
+      <div>
+        <div style="font-weight:600;font-size:14px">👥 ${escHtml(g.name)}</div>
+        <div style="font-size:12px;color:#8b9bab">${g.count} 人</div>
+      </div>
+      <button onclick="doJoinGroup('${g.uid}')" style="padding:6px 16px;background:#2b5278;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">加入</button>
+    </div>`
+  ).join("");
+}
+
+function doJoinGroup(uid) {
+  socket.emit("group_join", { uid });
+  closeModal("joinGroupModal");
+}
+
+function refreshAll() {
+  socket.emit("user_list");
+  socket.emit("group_list");
+  socket.emit("friend_list");
+  // 刷新当前聊天的历史
+  const histKey = currentChat.type === "lobby" ? "_lobby"
+    : currentChat.type === "group" ? `group_${currentChat.uid}`
+    : `priv_${minUser(currentUser, currentChat.name)}_${maxUser(currentUser, currentChat.name)}`;
+  socket.emit("history", { target: histKey });
+  showToast("已刷新");
+}
+
+function showInviteModal(uid) {
+  const friends = friendData.friends || [];
+  const members = groupList[uid]?.members || [];
+  const invitable = friends.filter(f => !members.includes(f));
+  const container = document.getElementById("inviteFriendsList");
+  if (invitable.length === 0) {
+    container.innerHTML = '<div class="empty-list">没有可邀请的好友<br>先添加好友吧</div>';
+  } else {
+    container.innerHTML = invitable.map(f =>
+      `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin-bottom:6px;background:#0e1621;border-radius:8px">
+        <div style="font-weight:600;font-size:14px">${escHtml(f)}</div>
+        <button onclick="doInvite('${uid}','${escHtml(f)}')" style="padding:6px 16px;background:#2b5278;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">邀请</button>
+      </div>`
+    ).join("");
+  }
+  showModal("inviteGroupModal");
+}
+
+function doInvite(uid, user) { socket.emit("group_invite", { uid, to: user }); }
+
+function acceptGroupInvite(uid) {
+  socket.emit("group_accept", { uid });
+  pendingGroupInvites = pendingGroupInvites.filter(i => i.uid !== uid);
+  renderFriendList();
+}
+
+function rejectGroupInvite(uid) {
+  socket.emit("group_reject", { uid });
+  pendingGroupInvites = pendingGroupInvites.filter(i => i.uid !== uid);
+  renderFriendList();
+}
+
+function startPrivate(username) {
+  if (username === currentUser) return;
+  // 预加载对方密钥
+  if (!userKeysCache[username]) socket.emit("get_user_key", { username });
+  switchTab("chats");
+  currentChat = { type: "private", name: username };
+  renderChatList();
+  document.getElementById("chatTitle").textContent = `💬 ${username}`;
+  document.getElementById("chatSubtitle").textContent = "🔒 端到端加密";
+  document.getElementById("headerActions").innerHTML = "";
+  const key = `priv_${minUser(currentUser, username)}_${maxUser(currentUser, username)}`;
+  if (!chatHistory[key]) chatHistory[key] = [];
+  socket.emit("history", { target: key });
+  renderMessages();
+}
+
+function showModal(id) { document.getElementById(id).style.display = "flex"; }
+function closeModal(id) { document.getElementById(id).style.display = "none"; }
+
+// ========== 弹窗通知 ==========
+function showToast(text, duration) {
+  duration = duration || 3000;
+  const container = document.getElementById("toastContainer");
+  const toast = document.createElement("div");
+  toast.style.cssText = "background:#2b5278;color:#fff;padding:12px 20px;border-radius:8px;margin-bottom:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);animation:slideIn 0.3s ease;cursor:pointer;max-width:320px;word-break:break-word";
+  toast.textContent = text;
+  toast.onclick = () => toast.remove();
+  container.appendChild(toast);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, duration);
+}
+
+// ========== Socket 事件 ==========
+socket.on("connect", () => { console.log("已连接服务器"); });
+
+socket.on("login_ok", (data) => {
+  currentUser = data.username;
+  myKeyHex = data.key; // 服务端返回的用户DES密钥
+  localStorage.setItem("chat_user", currentUser);
+  localStorage.setItem("chat_key", myKeyHex);
+  document.getElementById("authModal").style.display = "none";
+  document.getElementById("mainApp").style.display = "flex";
+  document.getElementById("myAvatar").textContent = currentUser[0].toUpperCase();
+  document.getElementById("myName").textContent = currentUser;
+  document.getElementById("myKeyInfo").textContent = `密钥: ${myKeyHex.substring(0, 8)}...`;
+  switchChat("lobby", "大厅");
+});
+
+socket.on("system", (data) => {
+  addMsg(currentChatKey(), { type: "system", text: data.text, time: data.time });
+  if (currentTab === "chats") renderMessages();
+  showToast("📢 " + data.text);
+});
+
+socket.on("error", (data) => {
+  if (document.getElementById("authModal").style.display !== "none") {
+    setError("authError", data.text);
+  } else {
+    addMsg(currentChatKey(), { type: "system", text: `❌ ${data.text}` });
+    renderMessages();
+    showToast("❌ " + data.text);
+  }
+});
+
+socket.on("chat", (data) => {
+  addMsg("_lobby", { type: "chat", msgType: "chat", from: data.from, text: data.text, time: data.time, encrypted: data.encrypted });
+  if (currentChat.type === "lobby") renderMessages();
+  renderChatList();
+});
+
+socket.on("private", (data) => {
+  // 收到私聊密文，用共享密钥解密
+  const senderKey = getUserKey(data.from);
+  let text = "[无法解密]";
+  if (senderKey) {
+    const sharedKey = deriveSharedKey(myKeyHex, senderKey);
+    try { text = desDecrypt(data.encrypted, sharedKey); } catch(e) { text = "[解密失败]"; }
+  } else {
+    socket.emit("get_user_key", { username: data.from });
+    pendingDecrypts.push({ type: "private", from: data.from, encrypted: data.encrypted, time: data.time });
+    return;
+  }
+  const key = `priv_${minUser(currentUser, data.from)}_${maxUser(currentUser, data.from)}`;
+  addMsg(key, { type: "chat", msgType: "private", from: data.from, text, encrypted: data.encrypted, time: data.time });
+  if (currentChat.type === "private" && currentChat.name === data.from) renderMessages();
+  else { showToast(`💬 ${data.from}: ${text}`); }
+  renderChatList();
+});
+
+socket.on("private_echo", (data) => {
+  const theirKey = getUserKey(data.to);
+  if (!theirKey) {
+    // 密钥未到，先缓存，等收到user_key事件后解密
+    pendingDecrypts.push({ type: "private_echo", to: data.to, encrypted: data.encrypted, time: data.time });
+    socket.emit("get_user_key", { username: data.to });
+    return;
+  }
+  const sharedKey = deriveSharedKey(myKeyHex, theirKey);
+  let text = "[解密失败]";
+  try { text = desDecrypt(data.encrypted, sharedKey); } catch(e) {}
+  const key = `priv_${minUser(currentUser, data.to)}_${maxUser(currentUser, data.to)}`;
+  addMsg(key, { type: "chat", msgType: "private", from: currentUser, text, encrypted: data.encrypted, time: data.time });
+  if (currentChat.type === "private" && currentChat.name === data.to) renderMessages();
+  renderChatList();
+});
+
+socket.on("group_msg", (data) => {
+  const uid = data.group_uid;
+  const key = `group_${uid}`;
+  const creatorKey = getCreatorKey(uid);
+  if (!creatorKey) {
+    // 群主密钥未到，缓存等待
+    pendingDecrypts.push({ type: "group", uid, from: data.from, encrypted: data.encrypted, time: data.time });
+    const info = groupList[uid];
+    if (info) socket.emit("get_user_key", { username: info.creator });
+    return;
+  }
+  const groupKey = deriveGroupKey(creatorKey, uid);
+  let text = "[解密失败]";
+  try { text = desDecrypt(data.encrypted, groupKey); } catch(e) {}
+  addMsg(key, { type: "chat", msgType: "group", from: data.from, text, encrypted: data.encrypted, time: data.time });
+  if (currentChat.type === "group" && currentChat.uid === uid) renderMessages();
+  renderChatList();
+});
+
+// 群系统消息（不加密，直接显示）
+socket.on("group_system", (data) => {
+  const uid = data.group_uid;
+  const key = `group_${uid}`;
+  addMsg(key, { type: "system", text: data.text, time: data.time });
+  if (currentChat.type === "group" && currentChat.uid === uid) renderMessages();
+});
+
+// 收到用户密钥（按需请求返回）
+socket.on("user_key", (data) => {
+  if (data.key) {
+    userKeysCache[data.username] = data.key;
+    processPendingDecrypts();
+  }
+});
+
+function processPendingDecrypts() {
+  const remaining = [];
+  for (const msg of pendingDecrypts) {
+    if (msg.type === "private" && msg.from) {
+      const theirKey = userKeysCache[msg.from];
+      if (!theirKey) { remaining.push(msg); continue; }
+      const sharedKey = deriveSharedKey(myKeyHex, theirKey);
+      let text = "[解密失败]";
+      try { text = desDecrypt(msg.encrypted, sharedKey); } catch(e) {}
+      const key = `priv_${minUser(currentUser, msg.from)}_${maxUser(currentUser, msg.from)}`;
+      addMsg(key, { type: "chat", msgType: "private", from: msg.from, text, encrypted: msg.encrypted, time: msg.time });
+      if (currentChat.type === "private" && currentChat.name === msg.from) renderMessages();
+    } else if (msg.type === "private_echo" && msg.to) {
+      const theirKey = userKeysCache[msg.to];
+      if (!theirKey) { remaining.push(msg); continue; }
+      const sharedKey = deriveSharedKey(myKeyHex, theirKey);
+      let text = "[解密失败]";
+      try { text = desDecrypt(msg.encrypted, sharedKey); } catch(e) {}
+      const key = `priv_${minUser(currentUser, msg.to)}_${maxUser(currentUser, msg.to)}`;
+      addMsg(key, { type: "chat", msgType: "private", from: currentUser, text, encrypted: msg.encrypted, time: msg.time });
+      if (currentChat.type === "private" && currentChat.name === msg.to) renderMessages();
+    } else if (msg.type === "group") {
+      const info = groupList[msg.uid];
+      if (!info) { remaining.push(msg); continue; }
+      const creatorKey = userKeysCache[info.creator];
+      if (!creatorKey) { remaining.push(msg); continue; }
+      const groupKey = deriveGroupKey(creatorKey, msg.uid);
+      let text = "[解密失败]";
+      try { text = desDecrypt(msg.encrypted, groupKey); } catch(e) {}
+      const gkey = `group_${msg.uid}`;
+      addMsg(gkey, { type: "chat", msgType: "group", from: msg.from, text, encrypted: msg.encrypted, time: msg.time });
+      if (currentChat.type === "group" && currentChat.uid === msg.uid) renderMessages();
+    }
+  }
+  pendingDecrypts = remaining;
+  renderChatList();
+}
+
+// DES兼容性测试
+function testDes() {
+  try {
+    const key = "aabbccdd11223344";
+    const jsCt = desEncrypt("hello", key);
+    console.log("JS密文:", jsCt);
+    socket.emit("test_des", { key });
+  } catch(e) {
+    alert("JS加密出错: " + e.message);
+  }
+}
+socket.on("test_des_result", (data) => {
+  try {
+    console.log("Python密文:", data.ciphertext);
+    const jsPt = desDecrypt(data.ciphertext, data.key);
+    console.log("JS解密结果:", jsPt);
+    if (jsPt === "hello") {
+      alert("✅ DES兼容性测试通过！\nJS密文: " + desEncrypt("hello", data.key) + "\nPython密文: " + data.ciphertext);
+    } else {
+      alert("❌ DES不兼容！\nJS解密结果: " + jsPt + "\n期望: hello");
+    }
+  } catch(e) {
+    alert("解密出错: " + e.message);
+  }
+});
+
+socket.on("user_list", (data) => {
+  onlineUsersList = data.users || [];
+  const panel = document.getElementById("onlineUsers");
+  panel.innerHTML = onlineUsersList.map(u =>
+    `<span class="user-tag" onclick="startPrivate('${escHtml(u)}')">${escHtml(u)}${u === currentUser ? '(我)' : ''}</span>`
+  ).join("");
+  renderFriendList();
+});
+
+socket.on("group_list", (data) => {
+  groupList = data.groups || {};
+  renderChatList();
+  renderJoinGroupList();
+});
+
+socket.on("friend_data", (data) => {
+  const oldReqs = friendData.requests?.from || [];
+  const newReqs = (data.requests?.from || []).filter(r => !oldReqs.includes(r));
+  friendData = data;
+  renderFriendList();
+  renderChatList();
+  // 新好友请求弹窗
+  for (const r of newReqs) {
+    showToast(`👤 ${r} 请求添加你为好友`);
+  }
+});
+
+socket.on("group_invite", (data) => {
+  pendingGroupInvites.push(data);
+  renderFriendList();
+  switchTab("friends");
+  showToast(`📨 ${data.from} 邀请你加入群 [${data.name}]`);
+});
+
+socket.on("history", (data) => {
+  const key = data.target === "_lobby" ? "_lobby" : data.target;
+  const isPrivate = data.target.startsWith("priv_");
+  const isGroup = data.target.startsWith("group_");
+
+  chatHistory[key] = (data.records || []).map(r => {
+    const msg = {
+      type: "chat",
+      msgType: isPrivate ? "private" : isGroup ? "group" : "chat",
+      from: r.from, text: r.text, time: r.time, encrypted: r.encrypted,
+    };
+    // 加密消息需要解密
+    if (r.encrypted && !r.text) {
+      if (isPrivate) {
+        const otherUser = r.from === currentUser ? r.to : r.from;
+        const theirKey = getUserKey(otherUser);
+        if (theirKey) {
+          const sharedKey = deriveSharedKey(myKeyHex, theirKey);
+          try { msg.text = desDecrypt(r.encrypted, sharedKey); } catch(e) { msg.text = "[解密失败]"; }
+        } else {
+          msg.text = "[等待密钥...]";
+          socket.emit("get_user_key", { username: otherUser });
+        }
+      } else if (isGroup) {
+        const uid = data.target.replace("group_", "");
+        const creatorKey = getCreatorKey(uid);
+        if (creatorKey) {
+          const groupKey = deriveGroupKey(creatorKey, uid);
+          try { msg.text = desDecrypt(r.encrypted, groupKey); } catch(e) { msg.text = "[解密失败]"; }
+        } else {
+          msg.text = "[等待密钥...]";
+        }
+      }
+    }
+    return msg;
+  });
+  if (currentChatKey() === key) renderMessages();
+});
+</script>
+</body>
+</html>
