@@ -15,7 +15,7 @@ from crypto_utils import encrypt, decrypt, generate_key
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "des-chat-secret"
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 DES_KEY = b"8bytekey"
 

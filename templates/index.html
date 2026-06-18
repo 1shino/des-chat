@@ -268,7 +268,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 </div>
 
 <script>
-const socket = io();
+const socket = io({ transports: ["polling", "websocket"] });
 let currentUser = "";
 let myKeyHex = "";  // 当前用户的DES密钥（hex）
 let isRegister = false;
