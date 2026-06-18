@@ -90,6 +90,12 @@ def load_history(category: str) -> list[dict]:
     return []
 
 
+# 确保数据目录存在并加载数据（gunicorn 导入时也会执行）
+os.makedirs(HISTORY_DIR, exist_ok=True)
+load_users()
+load_groups()
+
+
 # ============================================================
 #  工具函数
 # ============================================================
@@ -587,9 +593,6 @@ def on_history(data):
 # ============================================================
 
 if __name__ == "__main__":
-    os.makedirs(HISTORY_DIR, exist_ok=True)
-    load_users()
-    load_groups()
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
     print(f"[*] Web服务启动: http://0.0.0.0:{port}")
