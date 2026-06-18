@@ -168,7 +168,7 @@ def on_connect():
 
 
 @socketio.on("disconnect")
-def on_disconnect():
+def on_disconnect(reason=None):
     sid = request_sid()
     username = find_user_by_sid(sid)
     if username:
