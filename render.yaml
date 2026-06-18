@@ -3,7 +3,7 @@ services:
     name: des-chat
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -k gevent -w 1 -b 0.0.0.0:$PORT app:app
+    startCommand: gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 -b 0.0.0.0:$PORT app:app
     envVars:
       - key: FLASK_DEBUG
         value: "false"
