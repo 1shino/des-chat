@@ -2,4 +2,5 @@ pycryptodome
 flask
 flask-socketio
 gunicorn
-eventlet
+gevent
+gevent-websocket
